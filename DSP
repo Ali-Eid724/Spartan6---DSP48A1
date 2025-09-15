@@ -1,0 +1,120 @@
+module Main_Block #( parameter A0REG = 0, parameter A1REG = 0, parameter B0REG = 0,
+parameter B1REG = 0, parameter CREG = 1, parameter DREG = 1, parameter MREG = 1,
+parameter PREG = 1,parameter CARRYINREG = 1 , parameter CARRYOUTREG = 1,
+parameter OPMODEREG = 1,parameter RSTTYPE = "SYC",parameter B_INPUT = "DIRECT",
+parameter CARRYINSEL = "OPMODE5")
+( 
+A,B,C,D,CARRYIN,M,P,CARRYOUT,CARRYOUTF,clk,OPMODE,CEA,CEB,CEC,CED,CEM,CECARRYIN,
+CEOPMODE,RSTA,RSTB,RSTC,RSTP,RSTD,RSTOPMODE,RSTM,BCIN,PCIN,PCOUT,RSTCARRYIN,BCOUT
+);
+
+/*******************************/
+ //i/o ports
+ input [17:0] A,B,D,BCIN;
+ input [47:0] C,PCIN;
+ input [7:0] OPMODE;
+ input CARRYIN,CEA,CEB,CEC,CED,CEM,CECARRYIN,CEOPMODE,RSTA,RSTB,RSTC,RSTP,RSTD,
+ RSTCARRYIN,RSTOPMODE,RSTM,clk;
+ output [17:0] BCOUT;
+ output [47:0] P, PCOUT;
+ output CARRYOUT, CARRYOUTF;
+ output [35:0] M;
+
+/******************************/
+ //internal signal
+ wire [17:0] A_fin, B_fin, D_fin, A_fin1, B_fin1;
+ wire [7:0] OPMODE_fin;
+ wire [47:0] C_fin, P_fin;
+ wire [35:0] MP_fin;
+ wire CIN_fin, CO;
+ reg [47:0] X_mux, Z_mux;
+ reg [47:0] AR_op;
+ reg [35:0] MP;
+ reg [17:0] BD;
+
+ /****************************/
+ /* instintiations #(parameter Width = 18 , parameter RSTTYPE = "SYC",
+  parameter REG_en = 1) (in, out, clk, en, rst)*/
+
+ Reapeted_Block #(18, "SYC" ) A0_REG (A, A_fin,clk, CEA, RSTA, A0REG);
+ Reapeted_Block #(18, "SYC" ) A1_REG (A_fin, A_fin1,clk, CEA, RSTA, A1REG); 
+ Reapeted_Block #(58, "SYC" ) C_REG (C, C_fin, clk,CEC, RSTC, CREG);
+ Reapeted_Block #(18, "SYC" ) D_REG (D, D_fin, clk,CED, RSTD, DREG);
+ Reapeted_Block #(8, "SYC" )OP_MODE(OPMODE,OPMODE_fin,clk, CEOPMODE,RSTOPMODE,OPMODEREG);
+ Reapeted_Block #(18, "SYC" ) B_fin1_REG (BD, B_fin1,clk, CEB, RSTB, B1REG);
+ Reapeted_Block #(48, "SYC" ) P_REG (P_fin, P,clk, CEP, RSTP, PREG);
+ Reapeted_Block #(1, "SYC" ) CYO (CO, CARRYOUT,clk, CECARRIN,RSTCARRYIN,CARRYINREG);
+ Reapeted_Block #(36, "SYC" ) MPREG (MP, MP_fin, clk, CEM, RSTM, MREG);
+
+ /****************************/
+ 
+generate
+    if (B_INPUT == " DIRECT") begin
+         Reapeted_Block #(18, "SYC" ) B0REG (B, B_fin,clk, CEB, RSTB, B0REG);
+    end
+    else if(B_INPUT == " CASCADE") begin
+         Reapeted_Block #(18, "SYC" ) B0REG (BCIN, B_fin,clk, CEB, RSTB, B0REG);
+    end
+    else begin
+        wire [17:0] flag_wire = 18'b0;
+         Reapeted_Block #(18, "SYC" ) B0_REG (flag_wire, B_fin,clk, CEB, RSTB, B0REG);
+    end
+endgenerate
+generate
+    if(CARRYINSEL == "OPMODE5") begin
+         Reapeted_Block #(1, "SYC" ) Carry_in (OPMODE_fin[5], CIN_fin,clk, CECARRYIN,
+          RSTCARRYIN, CRRYINREG);
+    end
+    else if (CARRYINSEL == " CARRYIN") begin
+         Reapeted_Block #(1, "SYC" ) carry_in (CARRYIN, CIN_fin,clk, CECARRYIN,
+         RSTCARRYIN, CARRYINREG);
+    end
+    else begin
+        wire flag_wire = 1'b0;
+          Reapeted_Block #(1, "SYC" ) carry_in (flag_wire, CIN_fin,clk, CECARRYIN,
+          RSTCARRYIN, CARRYINREG);
+    end
+endgenerate
+
+/********************************/
+// assign 
+assign PCOUT = P;
+assign BCOUT = B_fin1;
+assign M = MP_fin;
+assign P_fin = AR_op[47:0];
+assign CARRYOUTF = CARRYOUT;
+assign CO = AR_op[48];
+
+always@(posedge clk) begin
+    case(OPMODE[4])
+      1'b0 : BD = B_fin;
+      1'b1 : begin
+        case(OPMODE[6])
+          1'b1 : BD = D_fin - B_fin;
+          1'b0 : BD = D_fin + B_fin;
+        endcase
+      end
+    endcase
+    MP = B_fin1 * A_fin1;
+      case(OPMODE[1:0])
+         2'b00: X_mux = 'b0;
+         2'b01: X_mux = {12'b0 , MP_fin};
+         2'b10: X_mux = P;
+         2'b11: X_mux = {D[11:0], A[17:0], B[17:0]};
+      endcase
+      case(OPMODE[3:2])
+         2'b00: Z_mux = 'b0;
+         2'b01: Z_mux = PCIN;
+         2'b10: Z_mux = P;
+         2'b11: Z_mux = {30'b0, C_fin};
+      endcase
+      case(OPMODE[7])
+         2'b0: begin
+            AR_op = Z_mux + X_mux +CIN_fin;
+         end
+         2'b1: begin
+            AR_op = Z_mux - (X_mux + CIN_fin);
+         end
+      endcase
+end
+endmodule
