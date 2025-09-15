@@ -1,0 +1,34 @@
+reg  SYC_seq , ASYC_seq;
+output [Width-1:0] out;
+/******************************/
+// logic
+generate
+    if(RSTTYPE == "ASYC") begin
+        always@(posedge clk, negedge rst_n) begin
+         if(~rst_n) begin
+            ASYC_seq <= 'b0;
+          end
+         else begin
+           if(en) begin
+            ASYC_seq <= in;
+          end
+         end
+        end
+          assign out = ( REG ) ? ASYC_seq : in;
+        end
+    else if ( RSTTYPE == "SYC") begin
+        always@(posedge clk) begin
+         if(~rst_n) begin
+            SYC_seq <= 'b0;
+          end
+         else begin
+           if(en) begin
+            SYC_seq <= in;
+          end
+         end
+        end
+          assign out = ( REG ) ? SYC_seq : in;
+        end
+endgenerate
+endmodule
+
